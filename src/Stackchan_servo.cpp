@@ -58,20 +58,34 @@ void StackchanSERVO::attachServos() {
     _sc.pSerial = &Serial2;
 
     if (_servo_type == ServoType::SCSCL_M5) {
-      // Phase 2 safety #1: disable torque at boot to avoid sudden movement.
+      // Phase 2 safety: 3-step boot sequence for SCSCL_M5
+      //   Step 1: Disable torque to safely reset prior state
+      //   Step 2: Force position-control mode (clear EEPROM PWM/wheel mode if any)
+      //   Step 3: Re-enable torque so subsequent WritePos commands work
+      // Why all three: SCSCL::WritePos does NOT implicitly enable torque (verified in
+      // SCServo lib source SCSCL.cpp). Without Step 3, servo would not respond to commands.
+
+      // Step 1: torque off (safety reset, prevents unexpected motion during PWMMode change)
       _sc.EnableTorque(AXIS_X + 1, 0);
       _sc.EnableTorque(AXIS_Y + 1, 0);
       delay(100);
-      M5_LOGI("SCSCL_M5: torque disabled at boot for safety");
+      M5_LOGI("SCSCL_M5: step 1 - torque disabled for safety reset");
 
-      // Phase 2 safety #2: force position-control mode (NOT PWM/wheel mode).
+      // Step 2: force position-control mode (NOT PWM/wheel mode).
       // M5Stack official firmware sets yaw to PWM mode (enablePwmMode=true) and stores
       // it in EEPROM. If left in PWM mode, our position-control WritePos commands would
-      // cause unexpected continuous rotation. Force back to position-control mode for safety.
+      // cause unexpected continuous rotation.
       _sc.PWMMode(AXIS_X + 1, false);  // yaw   → position-control mode
       _sc.PWMMode(AXIS_Y + 1, false);  // pitch → position-control mode (likely already)
       delay(100);
-      M5_LOGI("SCSCL_M5: forced position-control mode (PWM/wheel mode disabled)");
+      M5_LOGI("SCSCL_M5: step 2 - forced position-control mode (PWM/wheel mode disabled)");
+
+      // Step 3: re-enable torque in safe (position-control) mode so WritePos works.
+      // Now any WritePos call will be acted upon, but constrained to angle_limit clamp.
+      _sc.EnableTorque(AXIS_X + 1, 1);
+      _sc.EnableTorque(AXIS_Y + 1, 1);
+      delay(100);
+      M5_LOGI("SCSCL_M5: step 3 - torque re-enabled in position-control mode");
 
       // Phase 2 safety: set default angle limits (degree) for SCSCL if user did not specify.
       // These conservative limits prevent moveX/moveY from exceeding physical stops.
