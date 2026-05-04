@@ -51,13 +51,13 @@ float StackchanSERVO::getPosition(int x){
 };
 
 void StackchanSERVO::attachServos() {
-  if (_servo_type == ServoType::SCS || _servo_type == ServoType::SCSCL) {
+  if (_servo_type == ServoType::SCS || _servo_type == ServoType::SCSCL_M5) {
     // SCS0009 / SCSCL (FEETECH SC series, common protocol)
     Serial2.begin(1000000, SERIAL_8N1, _init_param.servo[AXIS_X].pin, _init_param.servo[AXIS_Y].pin);
     delay(500);
     _sc.pSerial = &Serial2;
 
-    if (_servo_type == ServoType::SCSCL) {
+    if (_servo_type == ServoType::SCSCL_M5) {
       // Phase 2 safety: disable torque at boot to avoid sudden movement to unknown center.
       // Also useful when previous firmware (e.g. M5Stack Official) left servos in
       // PWM/wheel mode — torque-off prevents unexpected continuous rotation.
@@ -205,7 +205,7 @@ void StackchanSERVO::moveX(int x, uint32_t millis_for_move) {
       x = clamped;
     }
   }
-  if (_servo_type == SCS || _servo_type == SCSCL) {
+  if (_servo_type == SCS || _servo_type == SCSCL_M5) {
     _sc.WritePos(AXIS_X + 1, convertSCS0009Pos(x + _init_param.servo[AXIS_X].offset), millis_for_move);
     _isMoving = true;
     vTaskDelay(millis_for_move/portTICK_PERIOD_MS);
@@ -255,7 +255,7 @@ void StackchanSERVO::moveY(int y, uint32_t millis_for_move) {
       y = clamped;
     }
   }
-  if (_servo_type == ServoType::SCS || _servo_type == ServoType::SCSCL) {
+  if (_servo_type == ServoType::SCS || _servo_type == ServoType::SCSCL_M5) {
     _sc.WritePos(AXIS_Y + 1, convertSCS0009Pos(y + _init_param.servo[AXIS_Y].offset), millis_for_move);
     _isMoving = true;
     vTaskDelay(millis_for_move/portTICK_PERIOD_MS);
@@ -304,7 +304,7 @@ void StackchanSERVO::moveXY(int x, int y, uint32_t millis_for_move) {
     int cy = constrain(y, _init_param.servo[AXIS_Y].lower_limit, _init_param.servo[AXIS_Y].upper_limit);
     if (cy != y) { M5_LOGW("moveXY: y %d clamped to %d", y, cy); y = cy; }
   }
-  if (_servo_type == ServoType::SCS || _servo_type == ServoType::SCSCL) {
+  if (_servo_type == ServoType::SCS || _servo_type == ServoType::SCSCL_M5) {
     int increase_degree_x = x - _last_degree_x;
     int increase_degree_y = y - _last_degree_y;
     uint32_t division_time = millis_for_move / SERIAL_EASE_DIVISION;
@@ -351,7 +351,7 @@ void StackchanSERVO::moveXY(servo_param_s servo_param_x, servo_param_s servo_par
     int cy = constrain(servo_param_y.degree, _init_param.servo[AXIS_Y].lower_limit, _init_param.servo[AXIS_Y].upper_limit);
     if (cy != servo_param_y.degree) { M5_LOGW("moveXY(p): y %d clamped to %d", servo_param_y.degree, cy); servo_param_y.degree = cy; }
   }
-  if (_servo_type == ServoType::SCS || _servo_type == ServoType::SCSCL) {
+  if (_servo_type == ServoType::SCS || _servo_type == ServoType::SCSCL_M5) {
     _sc.WritePos(AXIS_X + 1, convertSCS0009Pos(servo_param_x.degree + servo_param_x.offset), servo_param_x.millis_for_move);
     _sc.WritePos(AXIS_Y + 1, convertSCS0009Pos(servo_param_y.degree + servo_param_y.offset), servo_param_y.millis_for_move);
     _isMoving = true;

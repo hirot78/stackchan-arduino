@@ -34,9 +34,11 @@ enum ServoAxis {
 enum ServoType {
     PWM,             // SG90 PWM
     SCS,             // Feetech SCS0009 (RT alpha StackChan etc.)
-    SCSCL,           // Feetech SCS series used by M5Stack Official StackChan (CoreS3)
+    SCSCL_M5,        // Feetech SC series used by M5Stack Official StackChan (CoreS3)
                      //   Same SCS protocol as SCS0009 but different model.
                      //   Init time torque-OFF + range clamp added for safety.
+                     //   NOTE: enum name is SCSCL_M5 (not SCSCL) to avoid name collision
+                     //   with the SCSCL class from SCServo library.
     DYN_XL330,        // Dynamixel XL330
     RT_DYN_XL330     // Dynamixel XL330 on RT version stackchan
 };

@@ -181,7 +181,7 @@ void StackchanSystemConfig::setSystemConfig(DynamicJsonDocument doc) {
     // IMPORTANT: SCSCL must be checked BEFORE SCS, since "SCSCL" contains "SCS" as substring.
     if (_servo_type_str.indexOf("SCSCL") != -1) {
         // SCSCL (FEETECH SC series, used by M5Stack Official StackChan)
-        _servo_type = ServoType::SCSCL;
+        _servo_type = ServoType::SCSCL_M5;
     } else if (_servo_type_str.indexOf("SCS") != -1) {
         // SCS0009
         _servo_type = ServoType::SCS;
