@@ -53,9 +53,20 @@ float StackchanSERVO::getPosition(int x){
 void StackchanSERVO::attachServos() {
   if (_servo_type == ServoType::SCS || _servo_type == ServoType::SCSCL_M5) {
     // SCS0009 / SCSCL (FEETECH SC series, common protocol)
+    // CoreS3 (ESP32-S3) uses Serial1 (UART_NUM_1) — matches official m5stack/StackChan
+    // hal_servo.cpp: _scs_bus.begin(UART_NUM_1, 1000000, RX=6, TX=7)
+    // Core2 keeps Serial2 (UART_NUM_2) as before
+#if defined(ARDUINO_M5STACK_CORES3)
+    Serial1.begin(1000000, SERIAL_8N1, _init_param.servo[AXIS_X].pin, _init_param.servo[AXIS_Y].pin);
+    delay(500);
+    _sc.pSerial = &Serial1;
+    M5_LOGI("SCSCL_M5: using Serial1 (UART_NUM_1) for CoreS3, RX=%d, TX=%d",
+            _init_param.servo[AXIS_X].pin, _init_param.servo[AXIS_Y].pin);
+#else
     Serial2.begin(1000000, SERIAL_8N1, _init_param.servo[AXIS_X].pin, _init_param.servo[AXIS_Y].pin);
     delay(500);
     _sc.pSerial = &Serial2;
+#endif
 
     if (_servo_type == ServoType::SCSCL_M5) {
       // Phase 2 safety: 3-step boot sequence for SCSCL_M5
@@ -100,6 +111,19 @@ void StackchanSERVO::attachServos() {
         _init_param.servo[AXIS_Y].lower_limit = 90;   // pitch center ≈ 118 - 28 (downward limited)
         _init_param.servo[AXIS_Y].upper_limit = 160;  // pitch center ≈ 118 + 42 (upward)
         M5_LOGI("SCSCL: default pitch limit applied (90 - 160 deg)");
+      }
+
+      // DIAGNOSTIC: ReadPos to verify two-way communication with servos.
+      // If servos respond, ReadPos returns a value 0-1023 (raw position).
+      // If communication fails (wrong UART pins, baud, no power, etc.), it returns -1
+      // or hangs (with timeout). This is the litmus test for "is the wire actually working".
+      delay(100);
+      int read_x = _sc.ReadPos(AXIS_X + 1);
+      int read_y = _sc.ReadPos(AXIS_Y + 1);
+      M5_LOGI("SCSCL_M5: ReadPos diagnostic — yaw(ID1)=%d  pitch(ID2)=%d  (raw 0-1023, -1=NO RESPONSE)",
+              read_x, read_y);
+      if (read_x < 0 && read_y < 0) {
+        M5_LOGW("SCSCL_M5: BOTH servos returned -1 — communication FAILED. Check UART pins, baud, servo power.");
       }
 
       // NOTE: Servo will not move until external code explicitly calls moveX/moveY/moveXY,
