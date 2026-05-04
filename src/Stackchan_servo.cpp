@@ -51,11 +51,45 @@ float StackchanSERVO::getPosition(int x){
 };
 
 void StackchanSERVO::attachServos() {
-  if (_servo_type == ServoType::SCS) {
-    // SCS0009
+  if (_servo_type == ServoType::SCS || _servo_type == ServoType::SCSCL) {
+    // SCS0009 / SCSCL (FEETECH SC series, common protocol)
     Serial2.begin(1000000, SERIAL_8N1, _init_param.servo[AXIS_X].pin, _init_param.servo[AXIS_Y].pin);
     delay(500);
     _sc.pSerial = &Serial2;
+
+    if (_servo_type == ServoType::SCSCL) {
+      // Phase 2 safety: disable torque at boot to avoid sudden movement to unknown center.
+      // Also useful when previous firmware (e.g. M5Stack Official) left servos in
+      // PWM/wheel mode — torque-off prevents unexpected continuous rotation.
+      _sc.EnableTorque(AXIS_X + 1, 0);
+      _sc.EnableTorque(AXIS_Y + 1, 0);
+      delay(100);
+      M5_LOGI("SCSCL: torque disabled at boot for safety");
+
+      // Phase 2 safety: set default angle limits (degree) for SCSCL if user did not specify.
+      // These conservative limits prevent moveX/moveY from exceeding physical stops.
+      // Based on M5Stack official hal_servo.cpp center values (yaw=460 raw≈165deg, pitch=620≈118deg)
+      // with ±45 degree safe margin. Adjust empirically per individual unit.
+      if (_init_param.servo[AXIS_X].lower_limit == 0 && _init_param.servo[AXIS_X].upper_limit == 0) {
+        _init_param.servo[AXIS_X].lower_limit = 120;  // yaw  center ≈ 165 - 45
+        _init_param.servo[AXIS_X].upper_limit = 210;  // yaw  center ≈ 165 + 45
+        M5_LOGI("SCSCL: default yaw limit applied (120 - 210 deg)");
+      }
+      if (_init_param.servo[AXIS_Y].lower_limit == 0 && _init_param.servo[AXIS_Y].upper_limit == 0) {
+        _init_param.servo[AXIS_Y].lower_limit = 90;   // pitch center ≈ 118 - 28 (downward limited)
+        _init_param.servo[AXIS_Y].upper_limit = 160;  // pitch center ≈ 118 + 42 (upward)
+        M5_LOGI("SCSCL: default pitch limit applied (90 - 160 deg)");
+      }
+
+      // NOTE: Servo will not move until external code explicitly calls moveX/moveY/moveXY,
+      // which calls _sc.WritePos() — that command implicitly re-enables torque.
+      // First move should be small (close to current physical position) to avoid jerks.
+      _last_degree_x = _init_param.servo[AXIS_X].start_degree;
+      _last_degree_y = _init_param.servo[AXIS_Y].start_degree;
+      return;
+    }
+
+    // SCS0009 default behavior: immediately move to start_degree
     _sc.WritePos(AXIS_X + 1, convertSCS0009Pos(_init_param.servo[AXIS_X].start_degree + _init_param.servo[AXIS_X].offset), 1000);
     _sc.WritePos(AXIS_Y + 1, convertSCS0009Pos(_init_param.servo[AXIS_Y].start_degree + _init_param.servo[AXIS_Y].offset), 1000);
     vTaskDelay(1000/portTICK_PERIOD_MS);
@@ -162,7 +196,16 @@ void StackchanSERVO::begin(int servo_pin_x, int16_t start_degree_x, int16_t offs
 }
 
 void StackchanSERVO::moveX(int x, uint32_t millis_for_move) {
-  if (_servo_type == SCS) {
+  // Phase 2 safety: clamp angle to user-defined or default safe range
+  if (_init_param.servo[AXIS_X].lower_limit != 0 || _init_param.servo[AXIS_X].upper_limit != 0) {
+    int clamped = constrain(x, _init_param.servo[AXIS_X].lower_limit, _init_param.servo[AXIS_X].upper_limit);
+    if (clamped != x) {
+      M5_LOGW("moveX: angle %d clamped to %d (limit %d-%d)",
+              x, clamped, _init_param.servo[AXIS_X].lower_limit, _init_param.servo[AXIS_X].upper_limit);
+      x = clamped;
+    }
+  }
+  if (_servo_type == SCS || _servo_type == SCSCL) {
     _sc.WritePos(AXIS_X + 1, convertSCS0009Pos(x + _init_param.servo[AXIS_X].offset), millis_for_move);
     _isMoving = true;
     vTaskDelay(millis_for_move/portTICK_PERIOD_MS);
@@ -203,7 +246,16 @@ void StackchanSERVO::moveX(servo_param_s servo_param_x) {
 }
 
 void StackchanSERVO::moveY(int y, uint32_t millis_for_move) {
-  if (_servo_type == ServoType::SCS) {
+  // Phase 2 safety: clamp angle to user-defined or default safe range
+  if (_init_param.servo[AXIS_Y].lower_limit != 0 || _init_param.servo[AXIS_Y].upper_limit != 0) {
+    int clamped = constrain(y, _init_param.servo[AXIS_Y].lower_limit, _init_param.servo[AXIS_Y].upper_limit);
+    if (clamped != y) {
+      M5_LOGW("moveY: angle %d clamped to %d (limit %d-%d)",
+              y, clamped, _init_param.servo[AXIS_Y].lower_limit, _init_param.servo[AXIS_Y].upper_limit);
+      y = clamped;
+    }
+  }
+  if (_servo_type == ServoType::SCS || _servo_type == ServoType::SCSCL) {
     _sc.WritePos(AXIS_Y + 1, convertSCS0009Pos(y + _init_param.servo[AXIS_Y].offset), millis_for_move);
     _isMoving = true;
     vTaskDelay(millis_for_move/portTICK_PERIOD_MS);
@@ -243,7 +295,16 @@ void StackchanSERVO::moveY(servo_param_s servo_param_y) {
   moveY(servo_param_y.degree, servo_param_y.millis_for_move);
 }
 void StackchanSERVO::moveXY(int x, int y, uint32_t millis_for_move) {
-  if (_servo_type == ServoType::SCS) {
+  // Phase 2 safety: clamp both axes to user-defined or default safe range
+  if (_init_param.servo[AXIS_X].lower_limit != 0 || _init_param.servo[AXIS_X].upper_limit != 0) {
+    int cx = constrain(x, _init_param.servo[AXIS_X].lower_limit, _init_param.servo[AXIS_X].upper_limit);
+    if (cx != x) { M5_LOGW("moveXY: x %d clamped to %d", x, cx); x = cx; }
+  }
+  if (_init_param.servo[AXIS_Y].lower_limit != 0 || _init_param.servo[AXIS_Y].upper_limit != 0) {
+    int cy = constrain(y, _init_param.servo[AXIS_Y].lower_limit, _init_param.servo[AXIS_Y].upper_limit);
+    if (cy != y) { M5_LOGW("moveXY: y %d clamped to %d", y, cy); y = cy; }
+  }
+  if (_servo_type == ServoType::SCS || _servo_type == ServoType::SCSCL) {
     int increase_degree_x = x - _last_degree_x;
     int increase_degree_y = y - _last_degree_y;
     uint32_t division_time = millis_for_move / SERIAL_EASE_DIVISION;
@@ -281,7 +342,16 @@ void StackchanSERVO::moveXY(int x, int y, uint32_t millis_for_move) {
 }
 
 void StackchanSERVO::moveXY(servo_param_s servo_param_x, servo_param_s servo_param_y) {
-  if (_servo_type == ServoType::SCS) {
+  // Phase 2 safety: clamp both axes to user-defined or default safe range
+  if (_init_param.servo[AXIS_X].lower_limit != 0 || _init_param.servo[AXIS_X].upper_limit != 0) {
+    int cx = constrain(servo_param_x.degree, _init_param.servo[AXIS_X].lower_limit, _init_param.servo[AXIS_X].upper_limit);
+    if (cx != servo_param_x.degree) { M5_LOGW("moveXY(p): x %d clamped to %d", servo_param_x.degree, cx); servo_param_x.degree = cx; }
+  }
+  if (_init_param.servo[AXIS_Y].lower_limit != 0 || _init_param.servo[AXIS_Y].upper_limit != 0) {
+    int cy = constrain(servo_param_y.degree, _init_param.servo[AXIS_Y].lower_limit, _init_param.servo[AXIS_Y].upper_limit);
+    if (cy != servo_param_y.degree) { M5_LOGW("moveXY(p): y %d clamped to %d", servo_param_y.degree, cy); servo_param_y.degree = cy; }
+  }
+  if (_servo_type == ServoType::SCS || _servo_type == ServoType::SCSCL) {
     _sc.WritePos(AXIS_X + 1, convertSCS0009Pos(servo_param_x.degree + servo_param_x.offset), servo_param_x.millis_for_move);
     _sc.WritePos(AXIS_Y + 1, convertSCS0009Pos(servo_param_y.degree + servo_param_y.offset), servo_param_y.millis_for_move);
     _isMoving = true;

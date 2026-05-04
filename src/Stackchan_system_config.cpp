@@ -178,7 +178,11 @@ void StackchanSystemConfig::setSystemConfig(DynamicJsonDocument doc) {
     _led_pin = doc["led_pin"];
     _takao_base = doc["takao_base"];
     _servo_type_str = doc["servo_type"].as<String>();
-    if (_servo_type_str.indexOf("SCS") != -1) {
+    // IMPORTANT: SCSCL must be checked BEFORE SCS, since "SCSCL" contains "SCS" as substring.
+    if (_servo_type_str.indexOf("SCSCL") != -1) {
+        // SCSCL (FEETECH SC series, used by M5Stack Official StackChan)
+        _servo_type = ServoType::SCSCL;
+    } else if (_servo_type_str.indexOf("SCS") != -1) {
         // SCS0009
         _servo_type = ServoType::SCS;
     } else if (_servo_type_str.indexOf("RT_DYN_XL330") != -1) {
