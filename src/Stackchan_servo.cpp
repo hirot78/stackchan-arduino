@@ -58,13 +58,20 @@ void StackchanSERVO::attachServos() {
     _sc.pSerial = &Serial2;
 
     if (_servo_type == ServoType::SCSCL_M5) {
-      // Phase 2 safety: disable torque at boot to avoid sudden movement to unknown center.
-      // Also useful when previous firmware (e.g. M5Stack Official) left servos in
-      // PWM/wheel mode — torque-off prevents unexpected continuous rotation.
+      // Phase 2 safety #1: disable torque at boot to avoid sudden movement.
       _sc.EnableTorque(AXIS_X + 1, 0);
       _sc.EnableTorque(AXIS_Y + 1, 0);
       delay(100);
-      M5_LOGI("SCSCL: torque disabled at boot for safety");
+      M5_LOGI("SCSCL_M5: torque disabled at boot for safety");
+
+      // Phase 2 safety #2: force position-control mode (NOT PWM/wheel mode).
+      // M5Stack official firmware sets yaw to PWM mode (enablePwmMode=true) and stores
+      // it in EEPROM. If left in PWM mode, our position-control WritePos commands would
+      // cause unexpected continuous rotation. Force back to position-control mode for safety.
+      _sc.PWMMode(AXIS_X + 1, false);  // yaw   → position-control mode
+      _sc.PWMMode(AXIS_Y + 1, false);  // pitch → position-control mode (likely already)
+      delay(100);
+      M5_LOGI("SCSCL_M5: forced position-control mode (PWM/wheel mode disabled)");
 
       // Phase 2 safety: set default angle limits (degree) for SCSCL if user did not specify.
       // These conservative limits prevent moveX/moveY from exceeding physical stops.
