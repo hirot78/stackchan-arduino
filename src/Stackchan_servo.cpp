@@ -203,22 +203,31 @@ void StackchanSERVO::begin(stackchan_servo_initial_param_s init_param) {
   attachServos();
 }
 
-void StackchanSERVO::begin(int servo_pin_x, int16_t start_degree_x, int16_t offset_x, 
+void StackchanSERVO::begin(int servo_pin_x, int16_t start_degree_x, int16_t offset_x,
                            int servo_pin_y, int16_t start_degree_y, int16_t offset_y,
                            ServoType servo_type) {
+  // SAFETY: Explicitly zero-init lower/upper_limit. Caller does not pass these,
+  // so without this, _init_param.servo[].lower_limit / upper_limit hold garbage values.
+  // Garbage values cause constrain() in moveX/Y/XY to clamp to bizarre numbers
+  // (e.g. "165 clamped to 16477"), which could damage the servo.
+  // For SCSCL_M5, attachServos() will then set safe defaults (yaw 120-210, pitch 90-160).
   _init_param.servo[AXIS_X].pin          = servo_pin_x;
   _init_param.servo[AXIS_X].start_degree = start_degree_x;
   _init_param.servo[AXIS_X].offset       = offset_x;
+  _init_param.servo[AXIS_X].lower_limit  = 0;
+  _init_param.servo[AXIS_X].upper_limit  = 0;
   _init_param.servo[AXIS_Y].pin          = servo_pin_y;
   _init_param.servo[AXIS_Y].start_degree = start_degree_y;
   _init_param.servo[AXIS_Y].offset       = offset_y;
+  _init_param.servo[AXIS_Y].lower_limit  = 0;
+  _init_param.servo[AXIS_Y].upper_limit  = 0;
   _servo_type = servo_type;
   attachServos();
 }
 
 void StackchanSERVO::moveX(int x, uint32_t millis_for_move) {
   // Phase 2 safety: clamp angle to user-defined or default safe range
-  if (_init_param.servo[AXIS_X].lower_limit != 0 || _init_param.servo[AXIS_X].upper_limit != 0) {
+  if ((_init_param.servo[AXIS_X].lower_limit < _init_param.servo[AXIS_X].upper_limit)) {
     int clamped = constrain(x, _init_param.servo[AXIS_X].lower_limit, _init_param.servo[AXIS_X].upper_limit);
     if (clamped != x) {
       M5_LOGW("moveX: angle %d clamped to %d (limit %d-%d)",
@@ -268,7 +277,7 @@ void StackchanSERVO::moveX(servo_param_s servo_param_x) {
 
 void StackchanSERVO::moveY(int y, uint32_t millis_for_move) {
   // Phase 2 safety: clamp angle to user-defined or default safe range
-  if (_init_param.servo[AXIS_Y].lower_limit != 0 || _init_param.servo[AXIS_Y].upper_limit != 0) {
+  if ((_init_param.servo[AXIS_Y].lower_limit < _init_param.servo[AXIS_Y].upper_limit)) {
     int clamped = constrain(y, _init_param.servo[AXIS_Y].lower_limit, _init_param.servo[AXIS_Y].upper_limit);
     if (clamped != y) {
       M5_LOGW("moveY: angle %d clamped to %d (limit %d-%d)",
@@ -317,11 +326,11 @@ void StackchanSERVO::moveY(servo_param_s servo_param_y) {
 }
 void StackchanSERVO::moveXY(int x, int y, uint32_t millis_for_move) {
   // Phase 2 safety: clamp both axes to user-defined or default safe range
-  if (_init_param.servo[AXIS_X].lower_limit != 0 || _init_param.servo[AXIS_X].upper_limit != 0) {
+  if ((_init_param.servo[AXIS_X].lower_limit < _init_param.servo[AXIS_X].upper_limit)) {
     int cx = constrain(x, _init_param.servo[AXIS_X].lower_limit, _init_param.servo[AXIS_X].upper_limit);
     if (cx != x) { M5_LOGW("moveXY: x %d clamped to %d", x, cx); x = cx; }
   }
-  if (_init_param.servo[AXIS_Y].lower_limit != 0 || _init_param.servo[AXIS_Y].upper_limit != 0) {
+  if ((_init_param.servo[AXIS_Y].lower_limit < _init_param.servo[AXIS_Y].upper_limit)) {
     int cy = constrain(y, _init_param.servo[AXIS_Y].lower_limit, _init_param.servo[AXIS_Y].upper_limit);
     if (cy != y) { M5_LOGW("moveXY: y %d clamped to %d", y, cy); y = cy; }
   }
@@ -364,11 +373,11 @@ void StackchanSERVO::moveXY(int x, int y, uint32_t millis_for_move) {
 
 void StackchanSERVO::moveXY(servo_param_s servo_param_x, servo_param_s servo_param_y) {
   // Phase 2 safety: clamp both axes to user-defined or default safe range
-  if (_init_param.servo[AXIS_X].lower_limit != 0 || _init_param.servo[AXIS_X].upper_limit != 0) {
+  if ((_init_param.servo[AXIS_X].lower_limit < _init_param.servo[AXIS_X].upper_limit)) {
     int cx = constrain(servo_param_x.degree, _init_param.servo[AXIS_X].lower_limit, _init_param.servo[AXIS_X].upper_limit);
     if (cx != servo_param_x.degree) { M5_LOGW("moveXY(p): x %d clamped to %d", servo_param_x.degree, cx); servo_param_x.degree = cx; }
   }
-  if (_init_param.servo[AXIS_Y].lower_limit != 0 || _init_param.servo[AXIS_Y].upper_limit != 0) {
+  if ((_init_param.servo[AXIS_Y].lower_limit < _init_param.servo[AXIS_Y].upper_limit)) {
     int cy = constrain(servo_param_y.degree, _init_param.servo[AXIS_Y].lower_limit, _init_param.servo[AXIS_Y].upper_limit);
     if (cy != servo_param_y.degree) { M5_LOGW("moveXY(p): y %d clamped to %d", servo_param_y.degree, cy); servo_param_y.degree = cy; }
   }
